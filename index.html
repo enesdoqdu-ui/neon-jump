@@ -2,37 +2,132 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Nano Jump – Scaled Edition</title>
+<title>Neon Jump</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <style>
- body { margin:0; overflow:hidden; background:#000; touch-action:none; }
+ body { margin:0; overflow:hidden; background:#000; touch-action:none; font-family:sans-serif; }
  canvas { display:block; background:#02030f; }
- #score {
+
+/* SCORE */
+#score {
  position:fixed; top:15px; left:15px;
- color:#00ff88;
- font-size:28px;
+ color:#00ff88; font-size:28px; font-weight:bold;
+ text-shadow:0 0 10px #00ff88; z-index:50; display:none;
+}
+
+/* ✅ BAŞLANGIÇ MENÜSÜ */
+#menu {
+ position:fixed; inset:0; background:rgba(0,0,0,0.9);
+ display:flex; flex-direction:column; justify-content:center; align-items:center;
+ z-index:100; gap:25px;
+}
+
+#logo {
+ font-size:64px; color:#0ff; font-weight:bold;
+ text-shadow:0 0 25px #0ff;
+}
+
+.colorRow {
+ display:flex; gap:15px;
+}
+
+.colorPick {
+ width:45px; height:45px; border-radius:8px;
+ cursor:pointer; box-shadow:0 0 12px #fff3;
+ border:2px solid #fff5;
+}
+
+#previewBox {
+ width:80px; height:80px;
+ display:flex; justify-content:center; align-items:center;
+}
+
+#startBtn {
+ padding:12px 35px; background:#0ff; color:#000;
+ border:none; border-radius:10px;
+ font-size:24px; font-weight:bold; cursor:pointer;
+ box-shadow:0 0 20px #0ff;
+}
+
+/* ✅ GAME OVER EKRANI */
+#gameOver {
+ position:fixed; inset:0;
+ background:rgba(0,0,0,0.92);
+ display:flex; flex-direction:column;
+ justify-content:center; align-items:center;
+ z-index:200; gap:25px; display:none;
+}
+
+#finalScore {
+ font-size:80px; color:#0ff; text-shadow:0 0 25px #0ff;
  font-weight:bold;
- text-shadow:0 0 10px #00ff88;
- z-index:50;
- }
+}
+
+#retryBtn {
+ padding:12px 35px; background:#0ff; color:#000;
+ border:none; border-radius:10px;
+ font-size:30px; font-weight:bold; cursor:pointer;
+ box-shadow:0 0 20px #0ff;
+}
 </style>
 </head>
 
 <body>
+
+<!-- ✅ CANVAS -->
 <canvas id="game"></canvas>
+
+<!-- ✅ SKOR -->
 <div id="score">0</div>
 
+<!-- ✅ BAŞLANGIÇ MENÜSÜ -->
+<div id="menu">
+ <div id="logo">Neon Jump</div>
+
+ <div id="previewBox">
+   <canvas id="preview" width="80" height="80"></canvas>
+ </div>
+
+ <div class="colorRow">
+   <div class="colorPick" data-color="#0f0" style="background:#0f0"></div>
+   <div class="colorPick" data-color="#f00" style="background:#f00"></div>
+   <div class="colorPick" data-color="#00aaff" style="background:#00aaff"></div>
+   <div class="colorPick" data-color="#ff0" style="background:#ff0"></div>
+   <div class="colorPick" data-color="#a0f" style="background:#a0f"></div>
+ </div>
+
+ <button id="startBtn">BAŞLA</button>
+</div>
+
+<!-- ✅ GAME OVER -->
+<div id="gameOver">
+ <div id="finalScore">0</div>
+ <button id="retryBtn">YENİDEN OYNA</button>
+</div>
 <script>
+// =========================================================
+// CANVAS SETUP
+// =========================================================
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-// Dinamik değerler
-let spacing;
-let PLATFORM_COUNT;
-let jumpForce;
-let baseJump;
-let platformWidth;
-let platformHeight;
+let spacing, PLATFORM_COUNT, jumpForce, baseJump;
+let platformWidth, platformHeight;
+
+// Karakter rengi (varsayılan yeşil)
+let characterColor = "#0f0";
+
+// UI
+const menu = document.getElementById("menu");
+const scoreUI = document.getElementById("score");
+const gameOverUI = document.getElementById("gameOver");
+const finalScoreUI = document.getElementById("finalScore");
+const retryBtn = document.getElementById("retryBtn");
+
+// Önizleme canvas
+const preview = document.getElementById("preview");
+const pctx = preview.getContext("2d");
 
 function resize() {
     canvas.width = innerWidth;
@@ -47,12 +142,12 @@ function resize() {
     platformWidth = canvas.width * 0.18;
     platformHeight = canvas.height * 0.018;
 }
-
 resize();
 onresize = resize;
 
-let score = 0;
-
+// =========================================================
+// PLAYER
+// =========================================================
 let player = {
  x: innerWidth/2 - 25,
  y: innerHeight/2,
@@ -63,12 +158,19 @@ let player = {
  dir: 1
 };
 
+// =========================================================
+// WORLD
+// =========================================================
 let platforms = [];
 let particles = [];
 let scorePops = [];
+let score = 0;
 let groundJumpCount = 0;
 let groundRemoved = false;
 
+// =========================================================
+// ROUND RECT
+// =========================================================
 function roundRect(x,y,w,h,r){
  ctx.beginPath();
  ctx.moveTo(x+r,y);
@@ -83,6 +185,9 @@ function roundRect(x,y,w,h,r){
  ctx.closePath();
 }
 
+// =========================================================
+// PLATFORM GENERATION
+// =========================================================
 function randomType(){
  let r = Math.random();
  if(r < 0.08) return "deadly";
@@ -96,14 +201,8 @@ function createPlatforms(){
  let y = canvas.height - platformHeight*4;
 
  platforms.push({
-  x:0,
-  y:y,
-  w:canvas.width,
-  h:platformHeight,
-  type:"start",
-  scored:false,
-  hits:0,
-  speed:0
+  x:0, y:y, w:canvas.width, h:platformHeight,
+  type:"start", scored:false, hits:0, speed:0
  });
 
  y -= spacing;
@@ -123,8 +222,9 @@ function createPlatforms(){
  }
 }
 
-createPlatforms();
-
+// =========================================================
+// PARTICLES
+// =========================================================
 function spawnParticles(x,y,color,count=12,speed=2){
  for(let i=0;i<count;i++){
   particles.push({
@@ -155,6 +255,9 @@ function updateParticles(){
  });
 }
 
+// =========================================================
+// SCORE POPS
+// =========================================================
 function addScorePop(x,y){
  scorePops.push({x,y,alpha:1});
 }
@@ -173,6 +276,9 @@ function updateScorePops(){
  });
 }
 
+// =========================================================
+// DRAW PLAYER
+// =========================================================
 function drawPlayer(){
  ctx.save();
  let tilt = player.vx * 0.05;
@@ -182,9 +288,9 @@ function drawPlayer(){
  ctx.scale(1, player.squash);
  ctx.translate(-(player.x+player.w/2), -(player.y+player.h/2));
 
- ctx.fillStyle="#0f0";
+ ctx.fillStyle = characterColor;
  ctx.shadowBlur=18;
- ctx.shadowColor="#0f0";
+ ctx.shadowColor=characterColor;
  roundRect(player.x,player.y,player.w,player.h,14);
  ctx.fill();
  ctx.shadowBlur=0;
@@ -200,6 +306,9 @@ function drawPlayer(){
  ctx.restore();
 }
 
+// =========================================================
+// DRAW PLATFORMS
+// =========================================================
 function drawPlatforms(){
  platforms.forEach(p=>{
   if(p.type==="normal") ctx.fillStyle="#0af";
@@ -215,7 +324,14 @@ function drawPlatforms(){
  ctx.shadowBlur=0;
 }
 
+// =========================================================
+// GAME LOOP
+// =========================================================
+let gameRunning = false;
+
 function update(){
+ if(!gameRunning) return requestAnimationFrame(update);
+
  ctx.clearRect(0,0,canvas.width,canvas.height);
 
  player.vy += 0.4;
@@ -247,20 +363,15 @@ function update(){
    player.y+player.h < p.y+p.h+18
   ){
 
-   if(p.type==="deadly"){ restart(); return; }
+   if(p.type==="deadly"){ return gameOver(); }
 
    player.vy = jumpForce;
    player.squash = 0.75;
-   spawnParticles(player.x+player.w/2, player.y+player.h, "#0f0", 12, 3);
-
-   if(p.type==="start"){
-    groundJumpCount++;
-    if(groundJumpCount>=10) groundRemoved=true;
-   }
+   spawnParticles(player.x+player.w/2, player.y+player.h, characterColor, 12, 3);
 
    if(!p.scored && p.type!=="start"){
     score++;
-    document.getElementById("score").innerText = score;
+    scoreUI.innerText = score;
     addScorePop(player.x + player.w/2, player.y);
     p.scored = true;
    }
@@ -273,9 +384,8 @@ function update(){
   }
  });
 
- if(groundRemoved){
-  let g = platforms.find(pl=>pl.type==="start");
-  if(g) g.y += 4;
+ if(player.y > canvas.height+150){
+  return gameOver();
  }
 
  player.squash += (1 - player.squash)*0.1;
@@ -303,10 +413,6 @@ function update(){
 
  platforms = platforms.filter(p=>p.y < canvas.height+200);
 
- if(player.y > canvas.height+150){
-  restart();
- }
-
  drawPlatforms();
  updateParticles();
  updateScorePops();
@@ -314,31 +420,45 @@ function update(){
 
  requestAnimationFrame(update);
 }
-
-function restart(){
- score = 0;
- document.getElementById("score").innerText = 0;
-
- player = {
-  x: innerWidth/2 - 25,
-  y: innerHeight/2,
-  w: canvas.width * 0.06,
-  h: canvas.width * 0.06,
-  vx:0, vy:0,
-  squash:1, dir:1
- };
-
- groundJumpCount=0;
- groundRemoved=false;
-
- jumpForce = baseJump;
-
- createPlatforms();
-}
-
-setInterval(()=>jumpForce -= 0.5,5000);
 update();
 
+// =========================================================
+// GAME OVER
+// =========================================================
+function gameOver(){
+ gameRunning = false;
+ scoreUI.style.display = "none";
+ finalScoreUI.innerText = score;
+ gameOverUI.style.display = "flex";
+}
+
+retryBtn.onclick = ()=>{
+ gameOverUI.style.display = "none";
+ startGame();
+};
+
+// =========================================================
+// START GAME
+// =========================================================
+function startGame(){
+ score = 0;
+ scoreUI.innerText = "0";
+ scoreUI.style.display = "block";
+
+ player.x = innerWidth/2 - 25;
+ player.y = innerHeight/2;
+ player.vx = 0;
+ player.vy = 0;
+ player.squash = 1;
+
+ createPlatforms();
+
+ gameRunning = true;
+}
+
+// =========================================================
+// CONTROLS
+// =========================================================
 document.addEventListener("keydown", e=>{
  if(e.key==="ArrowLeft") player.vx=-6;
  if(e.key==="ArrowRight") player.vx=6;
@@ -352,6 +472,46 @@ document.addEventListener("touchmove",e=>{
  player.vx = (e.touches[0].clientX - touchX)*0.17;
  touchX = e.touches[0].clientX;
 });
+
+// =========================================================
+// ✅ BAŞLANGIÇ MENÜSÜ – RENK SEÇİMİ
+// =========================================================
+document.querySelectorAll(".colorPick").forEach(btn=>{
+ btn.onclick = ()=>{
+   characterColor = btn.dataset.color;
+ };
+});
+
+// =========================================================
+// ✅ MENÜDE KARAKTER ÖNİZLEME ANİMASYONU
+// =========================================================
+let pvY = 40, pvVy = 0;
+
+function drawPreview(){
+ pctx.clearRect(0,0,80,80);
+ pvVy += 0.3;
+ pvY += pvVy;
+ if(pvY > 55){ pvY = 55; pvVy = -6; }
+
+ pctx.fillStyle = characterColor;
+ pctx.shadowBlur = 15;
+ pctx.shadowColor = characterColor;
+ pctx.beginPath();
+ pctx.roundRect(20, pvY, 40, 40, 10);
+ pctx.fill();
+ pctx.shadowBlur = 0;
+
+ requestAnimationFrame(drawPreview);
+}
+drawPreview();
+
+// =========================================================
+// ✅ BAŞLAT BUTONU
+// =========================================================
+document.getElementById("startBtn").onclick = ()=>{
+ menu.style.display = "none";
+ startGame();
+};
 </script>
 </body>
 </html>
