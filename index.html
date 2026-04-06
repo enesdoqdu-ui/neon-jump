@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Nano Doodle Jump – Neon V2</title>
+
+<style>
+    body {
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+        touch-action: none;
+        font-family: Arial;
+    }
+    canvas {
+        display: block;
+        margin: 0 auto;
+        background: radial-gradient(circle at 50% 80%, #002, #000);
+    }
+    #ui, #gameOver {
+        position: fixed;
+        top: 30%;
+        text-align: center;
+        width: 100%;
+        display: none;
+    }
+    h1, h2 {
+        color: #0f0;
+        text-shadow: 0 0 20px #0f0;
+    }
+    button {
+        padding: 15px 25px;
+        background: #0f0;
+        color: #000;
+        border: none;
+        border-radius: 12px;
+        font-size: 20px;
+        margin-top: 20px;
+        cursor: pointer;
+        box-shadow: 0 0 20px #0f0;
+    }
+    #score {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        font-size: 24px;
+        color: #0f0;
+        text-shadow: 0 0 10px #0f0;
+    }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+<div id="score">0</div>
+
+<div id="ui">
+    <h1>NANO DOODLE JUMP</h1>
+    <button onclick="startGame()">BAŞLAT</button>
+</div>
+
+<div id="gameOver">
+    <h1>ÖLDÜN!</h1>
+    <h2 id="finalScore"></h2>
+    <button onclick="startGame()">TEKRAR OYNA</button>
+</div>
+
+<script>
+/***************************************
+ * CANVAS SETUP
+ ***************************************/
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+canvas.width = 400;
+canvas.height = 600;
+
+/***************************************
+ * GAME VARS
+ ***************************************/
+let player, platforms, score, started, isGameOver;
+
+const ui = document.getElementById("ui");
+const gameOverUI = document.getElementById("gameOver");
+const finalScore = document.getElementById("finalScore");
+const scoreBox = document.getElementById("score");
+
+/***************************************
+ * CHARACTER CREATION (NEON)
+ ***************************************/
+function createPlayer() {
+    return {
+        x: 200,
+        y: 550,
+        w: 40,
+        h: 40,
+        vy: 0,
+        vx: 0,
+        dir: 1,
+        squash: 1  
+    };
+}
+
+function drawPlayer() {
+    ctx.save();
+
+    ctx.translate(player.x + player.w / 2, player.y + player.h / 2);
+    ctx.scale(1, player.squash);
+    ctx.translate(-(player.x + player.w / 2), -(player.y + player.h / 2));
+
+    // body
+    ctx.fillStyle = "#0f0";
+    ctx.shadowColor = "#0f0";
+    ctx.shadowBlur = 20;
+    ctx.fillRect(player.x, player.y, player.w, player.h);
+
+    // eyes
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(player.x + 10, player.y + 10, 8, 8);
+    ctx.fillRect(player.x + 22, player.y + 10, 8, 8);
+
+    // nose direction
+    ctx.fillStyle = "#ff0";
+    if (player.dir === 1) {
+        ctx.fillRect(player.x + 36, player.y + 18, 10, 6);
+    } else {
+        ctx.fillRect(player.x - 6, player.y + 18, 10, 6);
+    }
+
+    ctx.restore();
+}
+
+/***************************************
+ * PLATFORM TYPES
+ ***************************************/
+function createPlatforms() {
+    let arr = [];
+    for (let i = 0; i < 10; i++) {
+        arr.push({
+            x: Math.random() * 330,
+            y: 600 - i * 60,
+            w: 70,
+            h: 12,
+            type: "normal",
+            hits: 0,
+            scored: false,
+            speed: 0
+        });
+    }
+    return arr;
+}
+
+function genPlatform(y) {
+    let dice = Math.random();
+
+    let breakChance = Math.min(0.05 + score / 2000, 0.25);
+    let deadlyChance = Math.min(0.01 + score / 7000, 0.08);
+    let movingChance = Math.min(0.05 + score / 1500, 0.35);
+
+    let type = "normal";
+    if (dice < deadlyChance) type = "deadly";
+    else if (dice < deadlyChance + breakChance) type = "break";
+    else if (dice < deadlyChance + breakChance + movingChance) type = "moving";
+
+    return {
+        x: Math.random() * 330,
+        y,
+        w: 70,
+        h: 12,
+        type,
+        hits: 0,
+        scored: false,
+        speed: type === "moving" ? (Math.random() * 1.5 + 0.5) : 0
+    };
+}
+
+/***************************************
+ * DRAW PLATFORM
+ ***************************************/
+function drawPlatforms() {
+    platforms.forEach(p => {
+        ctx.shadowBlur = 15;
+
+        if (p.type === "normal") { ctx.fillStyle = "#08f"; ctx.shadowColor = "#08f"; }
+        if (p.type === "break")  { ctx.fillStyle = "#ffa500"; ctx.shadowColor = "#ffa500"; }
+        if (p.type === "deadly") { ctx.fillStyle = "#f00"; ctx.shadowColor = "#f00"; }
+        if (p.type === "moving") { ctx.fillStyle = "#a0f"; ctx.shadowColor = "#a0f"; }
+
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+    });
+}
+
+/***************************************
+ * GAME START
+ ***************************************/
+function startGame() {
+    player = createPlayer();
+    platforms = createPlatforms();
+    score = 0;
+    started = true;
+    isGameOver = false;
+
+    ui.style.display = "none";
+    gameOverUI.style.display = "none";
+
+    requestAnimationFrame(update);
+}
+
+/***************************************
+ * DIE
+ ***************************************/
+function die() {
+    isGameOver = true;
+    started = false;
+
+    finalScore.innerText = "Skor: " + score;
+    gameOverUI.style.display = "block";
+}
+
+/***************************************
+ * UPDATE LOOP
+ ***************************************/
+function update() {
+    if (!started || isGameOver) return;
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // Gravity
+    player.vy += 0.5;
+    player.y += player.vy;
+    player.x += player.vx;
+    player.vx *= 0.9;
+
+    if (player.vx > 0.5) player.dir = 1;
+    if (player.vx < -0.5) player.dir = -1;
+
+    // Wrap
+    if (player.x < -50) player.x = canvas.width;
+    if (player.x > canvas.width) player.x = -50;
+
+    /******** PLATFORMS MOVE ********/
+    platforms.forEach(p => {
+        if (p.type === "moving") {
+            p.x += p.speed;
+            if (p.x < 0 || p.x + p.w > 400) p.speed *= -1;
+        }
+    });
+
+    /******** COLLISION ********/
+    platforms.forEach(p => {
+        if (
+            player.vy > 0 &&
+            player.x + player.w > p.x &&
+            player.x < p.x + p.w &&
+            player.y + player.h > p.y &&
+            player.y + player.h < p.y + p.h + 10
+        ) {
+
+            if (p.type === "deadly") {
+                die();
+                return;
+            }
+
+            player.vy = -15;
+            player.squash = 0.7;
+
+            if (!p.scored && p.type !== "deadly") {
+                score++;
+                scoreBox.innerText = score;
+                p.scored = true;
+            }
+
+            if (p.type === "break") {
+                p.hits++;
+                if (p.hits >= 2) p.y = 9999;
+            }
+        }
+    });
+
+    // squash animation
+    player.squash += (1 - player.squash) * 0.1;
+
+    /******** CAMERA ********/
+    if (player.y < 250) {
+        let diff = 250 - player.y;
+        player.y = 250;
+
+        platforms.forEach(p => p.y += diff);
+    }
+
+    /******** PLATFORM REFRESH ********/
+    platforms = platforms.filter(p => p.y < 620);
+
+    while (platforms.length < 10) {
+        let lastY = platforms[platforms.length - 1].y;
+        platforms.push(genPlatform(lastY - 60));
+    }
+
+    if (player.y > 620) die();
+
+    drawPlatforms();
+    drawPlayer();
+
+    requestAnimationFrame(update);
+}
+
+/***************************************
+ * CONTROLS
+ ***************************************/
+document.addEventListener("keydown", (e)=>{
+    if (e.key === "ArrowLeft")  player.vx = -6;
+    if (e.key === "ArrowRight") player.vx = 6;
+});
+
+let tx = 0;
+document.addEventListener("touchstart", e=>{
+    tx = e.touches[0].clientX;
+});
+document.addEventListener("touchmove", e=>{
+    let x = e.touches[0].clientX;
+    player.vx = (x - tx) * 0.15;
+    tx = x;
+});
+
+/***************************************
+ * FIRST SCREEN
+ ***************************************/
+ui.style.display = "block";
+</script>
+
+</body>
+</html>
