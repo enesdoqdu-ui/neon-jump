@@ -105,6 +105,7 @@
  <div id="finalScore">0</div>
  <button id="retryBtn">YENİDEN OYNA</button>
 </div>
+
 <script>
 // =========================================================
 // CANVAS SETUP
@@ -115,7 +116,7 @@ const ctx = canvas.getContext("2d");
 let spacing, PLATFORM_COUNT, jumpForce, baseJump;
 let platformWidth, platformHeight;
 
-// Karakter rengi (varsayılan yeşil)
+// Karakter rengi
 let characterColor = "#0f0";
 
 // UI
@@ -165,8 +166,6 @@ let platforms = [];
 let particles = [];
 let scorePops = [];
 let score = 0;
-let groundJumpCount = 0;
-let groundRemoved = false;
 
 // =========================================================
 // ROUND RECT
@@ -337,7 +336,9 @@ function update(){
  player.vy += 0.4;
  player.y += player.vy;
  player.x += player.vx;
- player.vx *= 0.90;
+
+ // ✅ Telefon hassasiyeti daha kaygan olsun
+ player.vx *= 0.94;
 
  if(player.vx>0.2) player.dir=1;
  if(player.vx<-0.2) player.dir=-1;
@@ -465,11 +466,13 @@ document.addEventListener("keydown", e=>{
 });
 
 let touchX=null;
+
 document.addEventListener("touchstart",e=>{
  touchX = e.touches[0].clientX;
 });
+
 document.addEventListener("touchmove",e=>{
- player.vx = (e.touches[0].clientX - touchX)*0.17;
+ player.vx = (e.touches[0].clientX - touchX) * 0.40; // ✅ HASSASİYET ARTTIRILDI
  touchX = e.touches[0].clientX;
 });
 
@@ -513,5 +516,6 @@ document.getElementById("startBtn").onclick = ()=>{
  startGame();
 };
 </script>
+
 </body>
 </html>
