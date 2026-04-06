@@ -2,332 +2,356 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Nano Doodle Jump – Neon V2</title>
-
+<title>Nano Jump – Scaled Edition</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-    body {
-        margin: 0;
-        overflow: hidden;
-        background: #000;
-        touch-action: none;
-        font-family: Arial;
-    }
-    canvas {
-        display: block;
-        margin: 0 auto;
-        background: radial-gradient(circle at 50% 80%, #002, #000);
-    }
-    #ui, #gameOver {
-        position: fixed;
-        top: 30%;
-        text-align: center;
-        width: 100%;
-        display: none;
-    }
-    h1, h2 {
-        color: #0f0;
-        text-shadow: 0 0 20px #0f0;
-    }
-    button {
-        padding: 15px 25px;
-        background: #0f0;
-        color: #000;
-        border: none;
-        border-radius: 12px;
-        font-size: 20px;
-        margin-top: 20px;
-        cursor: pointer;
-        box-shadow: 0 0 20px #0f0;
-    }
-    #score {
-        position: fixed;
-        top: 10px;
-        left: 10px;
-        font-size: 24px;
-        color: #0f0;
-        text-shadow: 0 0 10px #0f0;
-    }
+ body { margin:0; overflow:hidden; background:#000; touch-action:none; }
+ canvas { display:block; background:#02030f; }
+ #score {
+ position:fixed; top:15px; left:15px;
+ color:#00ff88;
+ font-size:28px;
+ font-weight:bold;
+ text-shadow:0 0 10px #00ff88;
+ z-index:50;
+ }
 </style>
 </head>
-<body>
 
+<body>
 <canvas id="game"></canvas>
 <div id="score">0</div>
 
-<div id="ui">
-    <h1>NANO DOODLE JUMP</h1>
-    <button onclick="startGame()">BAŞLAT</button>
-</div>
-
-<div id="gameOver">
-    <h1>ÖLDÜN!</h1>
-    <h2 id="finalScore"></h2>
-    <button onclick="startGame()">TEKRAR OYNA</button>
-</div>
-
 <script>
-/***************************************
- * CANVAS SETUP
- ***************************************/
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-canvas.width = 400;
-canvas.height = 600;
+// Dinamik değerler
+let spacing;
+let PLATFORM_COUNT;
+let jumpForce;
+let baseJump;
+let platformWidth;
+let platformHeight;
 
-/***************************************
- * GAME VARS
- ***************************************/
-let player, platforms, score, started, isGameOver;
+function resize() {
+    canvas.width = innerWidth;
+    canvas.height = innerHeight;
 
-const ui = document.getElementById("ui");
-const gameOverUI = document.getElementById("gameOver");
-const finalScore = document.getElementById("finalScore");
-const scoreBox = document.getElementById("score");
+    spacing = canvas.height * 0.12;
+    PLATFORM_COUNT = Math.floor(canvas.height / spacing) + 4;
 
-/***************************************
- * CHARACTER CREATION (NEON)
- ***************************************/
-function createPlayer() {
-    return {
-        x: 200,
-        y: 550,
-        w: 40,
-        h: 40,
-        vy: 0,
-        vx: 0,
-        dir: 1,
-        squash: 1  
-    };
+    jumpForce = -canvas.height * 0.023;
+    baseJump = jumpForce;
+
+    platformWidth = canvas.width * 0.18;
+    platformHeight = canvas.height * 0.018;
 }
 
-function drawPlayer() {
-    ctx.save();
+resize();
+onresize = resize;
 
-    ctx.translate(player.x + player.w / 2, player.y + player.h / 2);
-    ctx.scale(1, player.squash);
-    ctx.translate(-(player.x + player.w / 2), -(player.y + player.h / 2));
+let score = 0;
 
-    // body
-    ctx.fillStyle = "#0f0";
-    ctx.shadowColor = "#0f0";
-    ctx.shadowBlur = 20;
-    ctx.fillRect(player.x, player.y, player.w, player.h);
+let player = {
+ x: innerWidth/2 - 25,
+ y: innerHeight/2,
+ w: canvas.width * 0.06,
+ h: canvas.width * 0.06,
+ vx: 0, vy: 0,
+ squash: 1,
+ dir: 1
+};
 
-    // eyes
-    ctx.shadowBlur = 10;
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(player.x + 10, player.y + 10, 8, 8);
-    ctx.fillRect(player.x + 22, player.y + 10, 8, 8);
+let platforms = [];
+let particles = [];
+let scorePops = [];
+let groundJumpCount = 0;
+let groundRemoved = false;
 
-    // nose direction
-    ctx.fillStyle = "#ff0";
-    if (player.dir === 1) {
-        ctx.fillRect(player.x + 36, player.y + 18, 10, 6);
-    } else {
-        ctx.fillRect(player.x - 6, player.y + 18, 10, 6);
-    }
-
-    ctx.restore();
+function roundRect(x,y,w,h,r){
+ ctx.beginPath();
+ ctx.moveTo(x+r,y);
+ ctx.lineTo(x+w-r,y);
+ ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+ ctx.lineTo(x+w,y+h-r);
+ ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+ ctx.lineTo(x+r,y+h);
+ ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+ ctx.lineTo(x,y+r);
+ ctx.quadraticCurveTo(x,y,x+r,y);
+ ctx.closePath();
 }
 
-/***************************************
- * PLATFORM TYPES
- ***************************************/
-function createPlatforms() {
-    let arr = [];
-    for (let i = 0; i < 10; i++) {
-        arr.push({
-            x: Math.random() * 330,
-            y: 600 - i * 60,
-            w: 70,
-            h: 12,
-            type: "normal",
-            hits: 0,
-            scored: false,
-            speed: 0
-        });
-    }
-    return arr;
+function randomType(){
+ let r = Math.random();
+ if(r < 0.08) return "deadly";
+ if(r < 0.20) return "break";
+ if(r < 0.35) return "moving";
+ return "normal";
 }
 
-function genPlatform(y) {
-    let dice = Math.random();
+function createPlatforms(){
+ platforms = [];
+ let y = canvas.height - platformHeight*4;
 
-    let breakChance = Math.min(0.05 + score / 2000, 0.25);
-    let deadlyChance = Math.min(0.01 + score / 7000, 0.08);
-    let movingChance = Math.min(0.05 + score / 1500, 0.35);
+ platforms.push({
+  x:0,
+  y:y,
+  w:canvas.width,
+  h:platformHeight,
+  type:"start",
+  scored:false,
+  hits:0,
+  speed:0
+ });
 
-    let type = "normal";
-    if (dice < deadlyChance) type = "deadly";
-    else if (dice < deadlyChance + breakChance) type = "break";
-    else if (dice < deadlyChance + breakChance + movingChance) type = "moving";
+ y -= spacing;
 
-    return {
-        x: Math.random() * 330,
-        y,
-        w: 70,
-        h: 12,
-        type,
-        hits: 0,
-        scored: false,
-        speed: type === "moving" ? (Math.random() * 1.5 + 0.5) : 0
-    };
+ for(let i=1;i<PLATFORM_COUNT;i++){
+  platforms.push({
+   x: Math.random()*(canvas.width - platformWidth),
+   y: y,
+   w: platformWidth,
+   h: platformHeight,
+   type: randomType(),
+   scored:false,
+   hits:0,
+   speed: Math.random()>0.75 ? (Math.random()*1.4 + 0.4) : 0
+  });
+  y -= spacing;
+ }
 }
 
-/***************************************
- * DRAW PLATFORM
- ***************************************/
-function drawPlatforms() {
-    platforms.forEach(p => {
-        ctx.shadowBlur = 15;
+createPlatforms();
 
-        if (p.type === "normal") { ctx.fillStyle = "#08f"; ctx.shadowColor = "#08f"; }
-        if (p.type === "break")  { ctx.fillStyle = "#ffa500"; ctx.shadowColor = "#ffa500"; }
-        if (p.type === "deadly") { ctx.fillStyle = "#f00"; ctx.shadowColor = "#f00"; }
-        if (p.type === "moving") { ctx.fillStyle = "#a0f"; ctx.shadowColor = "#a0f"; }
-
-        ctx.fillRect(p.x, p.y, p.w, p.h);
-    });
+function spawnParticles(x,y,color,count=12,speed=2){
+ for(let i=0;i<count;i++){
+  particles.push({
+   x,y,
+   vx:(Math.random()-0.5)*speed,
+   vy:(Math.random()-1)*speed,
+   alpha:1,
+   size:Math.random()*3+2,
+   color
+  });
+ }
 }
 
-/***************************************
- * GAME START
- ***************************************/
-function startGame() {
-    player = createPlayer();
-    platforms = createPlatforms();
-    score = 0;
-    started = true;
-    isGameOver = false;
-
-    ui.style.display = "none";
-    gameOverUI.style.display = "none";
-
-    requestAnimationFrame(update);
+function updateParticles(){
+ particles = particles.filter(p=>p.alpha>0.05);
+ particles.forEach(p=>{
+  ctx.save();
+  ctx.globalAlpha = p.alpha;
+  ctx.fillStyle = p.color;
+  ctx.beginPath();
+  ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+  p.x += p.vx;
+  p.y += p.vy;
+  p.vy += 0.04;
+  p.alpha -= 0.03;
+ });
 }
 
-/***************************************
- * DIE
- ***************************************/
-function die() {
-    isGameOver = true;
-    started = false;
-
-    finalScore.innerText = "Skor: " + score;
-    gameOverUI.style.display = "block";
+function addScorePop(x,y){
+ scorePops.push({x,y,alpha:1});
 }
 
-/***************************************
- * UPDATE LOOP
- ***************************************/
-function update() {
-    if (!started || isGameOver) return;
-
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    // Gravity
-    player.vy += 0.5;
-    player.y += player.vy;
-    player.x += player.vx;
-    player.vx *= 0.9;
-
-    if (player.vx > 0.5) player.dir = 1;
-    if (player.vx < -0.5) player.dir = -1;
-
-    // Wrap
-    if (player.x < -50) player.x = canvas.width;
-    if (player.x > canvas.width) player.x = -50;
-
-    /******** PLATFORMS MOVE ********/
-    platforms.forEach(p => {
-        if (p.type === "moving") {
-            p.x += p.speed;
-            if (p.x < 0 || p.x + p.w > 400) p.speed *= -1;
-        }
-    });
-
-    /******** COLLISION ********/
-    platforms.forEach(p => {
-        if (
-            player.vy > 0 &&
-            player.x + player.w > p.x &&
-            player.x < p.x + p.w &&
-            player.y + player.h > p.y &&
-            player.y + player.h < p.y + p.h + 10
-        ) {
-
-            if (p.type === "deadly") {
-                die();
-                return;
-            }
-
-            player.vy = -15;
-            player.squash = 0.7;
-
-            if (!p.scored && p.type !== "deadly") {
-                score++;
-                scoreBox.innerText = score;
-                p.scored = true;
-            }
-
-            if (p.type === "break") {
-                p.hits++;
-                if (p.hits >= 2) p.y = 9999;
-            }
-        }
-    });
-
-    // squash animation
-    player.squash += (1 - player.squash) * 0.1;
-
-    /******** CAMERA ********/
-    if (player.y < 250) {
-        let diff = 250 - player.y;
-        player.y = 250;
-
-        platforms.forEach(p => p.y += diff);
-    }
-
-    /******** PLATFORM REFRESH ********/
-    platforms = platforms.filter(p => p.y < 620);
-
-    while (platforms.length < 10) {
-        let lastY = platforms[platforms.length - 1].y;
-        platforms.push(genPlatform(lastY - 60));
-    }
-
-    if (player.y > 620) die();
-
-    drawPlatforms();
-    drawPlayer();
-
-    requestAnimationFrame(update);
+function updateScorePops(){
+ scorePops = scorePops.filter(p=>p.alpha>0.05);
+ scorePops.forEach(p=>{
+  ctx.save();
+  ctx.globalAlpha = p.alpha;
+  ctx.fillStyle="#00ff88";
+  ctx.font="bold 28px Arial";
+  ctx.fillText("+1", p.x, p.y);
+  ctx.restore();
+  p.y -= 1;
+  p.alpha -= 0.03;
+ });
 }
 
-/***************************************
- * CONTROLS
- ***************************************/
-document.addEventListener("keydown", (e)=>{
-    if (e.key === "ArrowLeft")  player.vx = -6;
-    if (e.key === "ArrowRight") player.vx = 6;
+function drawPlayer(){
+ ctx.save();
+ let tilt = player.vx * 0.05;
+
+ ctx.translate(player.x+player.w/2, player.y+player.h/2);
+ ctx.rotate(tilt);
+ ctx.scale(1, player.squash);
+ ctx.translate(-(player.x+player.w/2), -(player.y+player.h/2));
+
+ ctx.fillStyle="#0f0";
+ ctx.shadowBlur=18;
+ ctx.shadowColor="#0f0";
+ roundRect(player.x,player.y,player.w,player.h,14);
+ ctx.fill();
+ ctx.shadowBlur=0;
+
+ ctx.fillStyle="#fff";
+ ctx.fillRect(player.x+player.w*0.24,player.y+player.h*0.3,player.w*0.18,player.h*0.18);
+ ctx.fillRect(player.x+player.w*0.6,player.y+player.h*0.3,player.w*0.18,player.h*0.18);
+
+ ctx.fillStyle="yellow";
+ if(player.dir===1) ctx.fillRect(player.x+player.w*0.96,player.y+player.h*0.52,player.w*0.2,player.h*0.12);
+ else ctx.fillRect(player.x-player.w*0.16,player.y+player.h*0.52,player.w*0.2,player.h*0.12);
+
+ ctx.restore();
+}
+
+function drawPlatforms(){
+ platforms.forEach(p=>{
+  if(p.type==="normal") ctx.fillStyle="#0af";
+  if(p.type==="break") ctx.fillStyle="#fa0";
+  if(p.type==="deadly") ctx.fillStyle="#f00";
+  if(p.type==="moving") ctx.fillStyle="#a0f";
+  if(p.type==="start") ctx.fillStyle="#0f0";
+
+  ctx.shadowBlur=10;
+  ctx.shadowColor=ctx.fillStyle;
+  ctx.fillRect(p.x,p.y,p.w,p.h);
+ });
+ ctx.shadowBlur=0;
+}
+
+function update(){
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+
+ player.vy += 0.4;
+ player.y += player.vy;
+ player.x += player.vx;
+ player.vx *= 0.90;
+
+ if(player.vx>0.2) player.dir=1;
+ if(player.vx<-0.2) player.dir=-1;
+
+ if(player.x < -player.w) player.x = canvas.width;
+ if(player.x > canvas.width) player.x = -player.w;
+
+ platforms.forEach(p=>{
+  if(p.type==="moving"){
+   p.x += p.speed;
+   if(p.x < 0 || p.x + p.w > canvas.width){
+    p.speed *= -1;
+   }
+  }
+ });
+
+ platforms.forEach(p=>{
+  if(
+   player.vy > 0 &&
+   player.x+player.w > p.x &&
+   player.x < p.x+p.w &&
+   player.y+player.h > p.y &&
+   player.y+player.h < p.y+p.h+18
+  ){
+
+   if(p.type==="deadly"){ restart(); return; }
+
+   player.vy = jumpForce;
+   player.squash = 0.75;
+   spawnParticles(player.x+player.w/2, player.y+player.h, "#0f0", 12, 3);
+
+   if(p.type==="start"){
+    groundJumpCount++;
+    if(groundJumpCount>=10) groundRemoved=true;
+   }
+
+   if(!p.scored && p.type!=="start"){
+    score++;
+    document.getElementById("score").innerText = score;
+    addScorePop(player.x + player.w/2, player.y);
+    p.scored = true;
+   }
+
+   if(p.type==="break"){
+    p.hits++;
+    spawnParticles(p.x+p.w/2, p.y, "#fa0", 10, 3);
+    if(p.hits>=2) p.y = 99999;
+   }
+  }
+ });
+
+ if(groundRemoved){
+  let g = platforms.find(pl=>pl.type==="start");
+  if(g) g.y += 4;
+ }
+
+ player.squash += (1 - player.squash)*0.1;
+
+ if(player.y < canvas.height*0.45){
+  let diff = canvas.height*0.45 - player.y;
+  player.y = canvas.height*0.45;
+  platforms.forEach(p=>p.y+=diff);
+  particles.forEach(p=>p.y+=diff);
+  scorePops.forEach(po=>po.y+=diff);
+ }
+
+ if(platforms[platforms.length-1].y > spacing){
+  let last = platforms[platforms.length-1].y;
+  platforms.push({
+   x:Math.random()*(canvas.width - platformWidth),
+   y:last-spacing,
+   w:platformWidth,h:platformHeight,
+   type:randomType(),
+   scored:false,
+   hits:0,
+   speed: Math.random()>0.75 ? (Math.random()*1.3+0.5) : 0
+  });
+ }
+
+ platforms = platforms.filter(p=>p.y < canvas.height+200);
+
+ if(player.y > canvas.height+150){
+  restart();
+ }
+
+ drawPlatforms();
+ updateParticles();
+ updateScorePops();
+ drawPlayer();
+
+ requestAnimationFrame(update);
+}
+
+function restart(){
+ score = 0;
+ document.getElementById("score").innerText = 0;
+
+ player = {
+  x: innerWidth/2 - 25,
+  y: innerHeight/2,
+  w: canvas.width * 0.06,
+  h: canvas.width * 0.06,
+  vx:0, vy:0,
+  squash:1, dir:1
+ };
+
+ groundJumpCount=0;
+ groundRemoved=false;
+
+ jumpForce = baseJump;
+
+ createPlatforms();
+}
+
+setInterval(()=>jumpForce -= 0.5,5000);
+update();
+
+document.addEventListener("keydown", e=>{
+ if(e.key==="ArrowLeft") player.vx=-6;
+ if(e.key==="ArrowRight") player.vx=6;
 });
 
-let tx = 0;
-document.addEventListener("touchstart", e=>{
-    tx = e.touches[0].clientX;
+let touchX=null;
+document.addEventListener("touchstart",e=>{
+ touchX = e.touches[0].clientX;
 });
-document.addEventListener("touchmove", e=>{
-    let x = e.touches[0].clientX;
-    player.vx = (x - tx) * 0.15;
-    tx = x;
+document.addEventListener("touchmove",e=>{
+ player.vx = (e.touches[0].clientX - touchX)*0.17;
+ touchX = e.touches[0].clientX;
 });
-
-/***************************************
- * FIRST SCREEN
- ***************************************/
-ui.style.display = "block";
 </script>
-
 </body>
 </html>
